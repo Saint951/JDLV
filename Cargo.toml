@@ -1,0 +1,17 @@
+[package]
+name = "game_of_life"
+version = "0.1.0"
+edition = "2021"
+description = "An artificial-life Game of Life: creatures must reproduce enough to survive the end of each cycle."
+
+[[bin]]
+name = "gol"
+path = "src/main.rs"
+
+[lib]
+name = "game_of_life"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = true

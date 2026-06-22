@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Game of Life — Live Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #070b12;
+  --surface: #0d1520;
+  --panel:   #101928;
+  --border:  #1e2d45;
+  --accent1: #3af0c8;
+  --accent2: #f0a03a;
+  --text:    #c8ddf0;
+  --muted:   #4a6080;
+  --herb:    #3dcc6e;
+  --omni:    #f0c43a;
+  --carn:    #f04a3a;
+  --aqua:    #3ab0f0;
+  --font:    'Outfit', sans-serif;
+  --mono:    'JetBrains Mono', monospace;
+}
+
+html, body { height:100%; background:var(--bg); color:var(--text); font-family:var(--font); overflow:hidden; }
+
+#app {
+  display:grid;
+  grid-template-rows: 48px 1fr;
+  grid-template-columns: 1fr 320px;
+  height:100vh;
+}
+
+/* ── Top bar ── */
+#topbar {
+  grid-column: 1/3;
+  display:flex; align-items:center; gap:20px; padding:0 20px;
+  background:var(--surface); border-bottom:1px solid var(--border);
+  overflow:hidden;
+}
+.logo { font-weight:700; font-size:15px; letter-spacing:.08em; color:var(--accent1); text-transform:uppercase; white-space:nowrap; }
+.stat-chip { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted); white-space:nowrap; }
+.stat-chip span { color:var(--text); font-weight:500; }
+.season-badge {
+  margin-left:auto;
+  padding:3px 12px; border-radius:20px; font-size:11px; font-weight:600;
+  letter-spacing:.12em; text-transform:uppercase;
+  background:#1a2d45; border:1px solid var(--border); color:var(--accent2);
+  transition:color .5s ease, border-color .5s ease;
+}
+/* Season-specific badge colours */
+.season-summer { color:#f0a03a!important; border-color:#f0a03a55!important; }
+.season-winter { color:#60a8f0!important; border-color:#60a8f055!important; }
+.season-spring { color:#6dcc3a!important; border-color:#6dcc3a55!important; }
+.season-autumn { color:#f06830!important; border-color:#f0683055!important; }
+
+/* ── World canvas wrap ── */
+#canvas-wrap { position:relative; overflow:hidden; background:#050910; cursor:crosshair; }
+#world { display:block; image-rendering:pixelated; }
+
+/* ── Season vignette overlay ── */
+#season-vignette {
+  position:absolute; inset:0; pointer-events:none;
+  opacity:0; transition:opacity 1s ease;
+  background:radial-gradient(ellipse at center, transparent 60%, rgba(0,30,80,0.4) 100%);
+}
+
+/* ── Tooltip ── */
+#tooltip {
+  position:absolute; background:rgba(8,16,30,0.96); border:1px solid var(--border);
+  border-radius:10px; padding:12px 16px; font-size:11px; font-family:var(--mono);
+  line-height:1.75; pointer-events:none; display:none; max-width:270px; z-index:100;
+  box-shadow:0 8px 32px rgba(0,0,0,.7); backdrop-filter:blur(4px);
+}
+.tt-header { font-size:12px; font-weight:600; margin-bottom:5px; }
+.tt-row { display:flex; justify-content:space-between; gap:14px; }
+.tt-label { color:var(--muted); }
+.tt-val { color:var(--text); }
+.tt-divider { border-top:1px solid var(--border); margin:5px 0; }
+
+/* ── Sidebar ── */
+#sidebar {
+  display:flex; flex-direction:column; background:var(--panel);
+  border-left:1px solid var(--border); overflow-y:auto; overflow-x:hidden;
+}
+.section { padding:13px 15px; border-bottom:1px solid var(--border); }
+.sec-title {
+  font-size:9.5px; font-weight:600; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:9px;
+}
+
+/* H/O/C boxes */
+.hoc-row { display:flex; gap:6px; margin-bottom:10px; }
+.hoc-box {
+  flex:1; padding:8px 5px; border-radius:8px; text-align:center; border:1px solid transparent;
+  transition:background .4s;
+}
+.hoc-box.herb { background:rgba(61,204,110,.07); border-color:rgba(61,204,110,.2); }
+.hoc-box.omni { background:rgba(240,196,58,.07); border-color:rgba(240,196,58,.2); }
+.hoc-box.carn { background:rgba(240,74,58,.07);  border-color:rgba(240,74,58,.2);  }
+.hoc-box .hoc-ltr  { font-size:14px; font-weight:700; }
+.hoc-box.herb .hoc-ltr { color:var(--herb); }
+.hoc-box.omni .hoc-ltr { color:var(--omni); }
+.hoc-box.carn .hoc-ltr { color:var(--carn); }
+.hoc-box .hoc-n   { font-size:19px; font-weight:600; line-height:1.2; }
+.hoc-box .hoc-sub { font-size:8.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+
+/* Info grid */
+.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.ic { background:var(--surface); border-radius:6px; padding:7px 10px; }
+.ic-label { font-size:8.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+.ic-val   { font-size:14px; font-weight:600; color:var(--text); margin-top:2px; }
+
+/* Gene bars */
+.gene-row { display:flex; align-items:center; gap:7px; margin-bottom:4px; }
+.g-label  { font-size:9.5px; color:var(--muted); width:82px; flex-shrink:0; font-family:var(--mono); }
+.g-track  { flex:1; height:5px; background:var(--border); border-radius:3px; overflow:hidden; }
+.g-fill   { height:100%; border-radius:3px; transition:width .5s ease; }
+.g-val    { font-size:9.5px; font-family:var(--mono); color:var(--text); width:38px; text-align:right; flex-shrink:0; }
+
+/* Legend */
+.leg-row   { display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:10.5px; }
+.leg-dot   { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.leg-sq    { width:10px; height:10px; flex-shrink:0; border-radius:1px; }
+.leg-lbl   { color:var(--muted); }
+
+/* Scrollbar */
+#sidebar::-webkit-scrollbar { width:3px; }
+#sidebar::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+.restart-btn {
+  background: rgba(58, 240, 200, 0.15);
+  border: 1px solid var(--accent1);
+  color: var(--accent1);
+  padding: 4px 14px;
+  border-radius: 6px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  margin-left: 15px;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+}
+.restart-btn:hover {
+  background: var(--accent1);
+  color: var(--surface);
+  box-shadow: 0 0 12px rgba(58, 240, 200, 0.4);
+}
+.restart-btn:active {
+  transform: scale(0.96);
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <span class="logo">🧬 GoL</span>
+    <span class="stat-chip">Cycle <span id="tb-cycle">—</span></span>
+    <span class="stat-chip">Tick <span id="tb-tick">—</span></span>
+    <span class="stat-chip">Pop <span id="tb-pop">—</span></span>
+    <span class="stat-chip">Trees <span id="tb-trees">—</span></span>
+    <span class="stat-chip">Aquatic <span id="tb-aqua">—</span></span>
+    <span class="stat-chip">⚡ <span id="tb-energy">—</span></span>
+    <span class="season-badge" id="tb-weather" style="margin-left:auto; background:#0d1b1c; border:1px solid #3af0c855; color:#3af0c8;">Clear</span>
+    <span class="season-badge" id="tb-season" style="margin-left:10px;">—</span>
+    <button id="btn-restart" class="restart-btn">Restart</button>
+  </header>
+
+  <div id="canvas-wrap">
+    <canvas id="world"></canvas>
+    <div id="season-vignette"></div>
+    <div id="tooltip"></div>
+  </div>
+
+  <aside id="sidebar">
+
+    <div class="section">
+      <div class="sec-title">Population</div>
+      <div class="hoc-row">
+        <div class="hoc-box herb"><div class="hoc-ltr">H</div><div class="hoc-n" id="hoc-h">0</div><div class="hoc-sub">Herbivore</div></div>
+        <div class="hoc-box omni"><div class="hoc-ltr">O</div><div class="hoc-n" id="hoc-o">0</div><div class="hoc-sub">Omnivore</div></div>
+        <div class="hoc-box carn"><div class="hoc-ltr">C</div><div class="hoc-n" id="hoc-c">0</div><div class="hoc-sub">Carnivore</div></div>
+      </div>
+      <div class="info-grid">
+        <div class="ic"><div class="ic-label">Fruits</div><div class="ic-val" id="inf-fruits">—</div></div>
+        <div class="ic"><div class="ic-label">Carcasses</div><div class="ic-val" id="inf-carc">—</div></div>
+        <div class="ic"><div class="ic-label">Aquatic plants</div><div class="ic-val" id="inf-aqua">—</div></div>
+        <div class="ic"><div class="ic-label">Fertilizer</div><div class="ic-val" id="inf-fert">—</div></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sec-title">Red Queen's Race</div>
+      <canvas id="pop-canvas" style="width:100%;height:90px;display:block;"></canvas>
+    </div>
+
+    <div class="section">
+      <div class="sec-title">Gene Averages</div>
+      <div id="gene-bars"></div>
+    </div>
+
+    <div class="section">
+      <div class="sec-title">Forest Genetics</div>
+      <div id="tree-bars"></div>
+    </div>
+
+    <div class="section">
+      <div class="sec-title">Legend</div>
+      <div class="leg-row"><div class="leg-dot" style="background:hsl(120,65%,40%)"></div><span class="leg-lbl">Herbivore (diet→0)</span></div>
+      <div class="leg-row"><div class="leg-dot" style="background:hsl(55,80%,48%)"></div><span class="leg-lbl">Omnivore (diet≈0.5)</span></div>
+      <div class="leg-row"><div class="leg-dot" style="background:hsl(0,75%,48%)"></div><span class="leg-lbl">Carnivore (diet→1)</span></div>
+      <div class="leg-row"><div class="leg-sq" style="background:#2a5e2a;border:1px solid #3a8a3a;"></div><span class="leg-lbl">Tree (red=toxic)</span></div>
+      <div class="leg-row"><div class="leg-dot" style="background:#3ab0f0;width:7px;height:7px;"></div><span class="leg-lbl">Aquatic plant</span></div>
+      <div class="leg-row"><div class="leg-dot" style="background:#f0d03a;width:7px;height:7px;"></div><span class="leg-lbl">Fruit</span></div>
+      <div class="leg-row"><div class="leg-dot" style="background:#6a3a2a;width:8px;height:8px;border-radius:2px;"></div><span class="leg-lbl">Carcass</span></div>
+      <div style="font-size:9.5px;color:var(--muted);margin-top:8px;line-height:1.8;">
+        <b style="color:var(--text)">Creature rings:</b><br>
+        Hue = diet &nbsp;|&nbsp; Brightness = energy<br>
+        Glow colour = temp. preference<br>
+        Outline = lethality &nbsp;|&nbsp; Arc = mating<br>
+        Dashed lines = kin clusters (sim≥0.8)
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sec-title">Controls</div>
+      <div style="font-size:10.5px;color:var(--muted);line-height:1.9;">
+        🖱 Scroll — Zoom &nbsp;|&nbsp; Drag — Pan<br>
+        🖱 Hover — Inspect &nbsp;|&nbsp; Click — Lock
+      </div>
+    </div>
+
+  </aside>
+</div>
+
+<script>
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state   = null;
+let terrain = null;
+let offscreenTerrain = null;
+
+// Previous state for interpolation
+let prevCreatures = new Map(); // id → {x, y}
+let interp = 0; // 0..1 interpolation progress
+
+// Camera
+let cam = { x:0, y:0, scale:1 };
+let drag = { on:false, sx:0, sy:0, cx:0, cy:0 };
+
+// Hover / selection
+let hoveredId = null;
+let lockedId  = null;
+let mouseXY   = { x:0, y:0 };
+
+const FETCH_INTERVAL = 80; // ms between state polls
+let lastFetch = 0;
+
+// ── Canvas setup ──────────────────────────────────────────────────────────
+const wrap   = document.getElementById('canvas-wrap');
+const canvas = document.getElementById('world');
+const ctx    = canvas.getContext('2d');
+const vignette = document.getElementById('season-vignette');
+
+function resize() {
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Terrain colours ────────────────────────────────────────────────────────
+const TILE_COLORS = [
+  [7,21,37],    // 0 DeepWater
+  [14,42,74],   // 1 ShallowWater
+  [181,160,106],// 2 Sand
+  [31,61,20],   // 3 Plains
+  [58,61,74],   // 4 Mountain
+];
+
+function buildTerrainCanvas(t) {
+  const tc = document.createElement('canvas');
+  tc.width = t.cols; tc.height = t.rows;
+  const tctx = tc.getContext('2d');
+  const img  = tctx.createImageData(t.cols, t.rows);
+  const d    = img.data;
+  for (let i = 0; i < t.tiles.length; i++) {
+    const [r, g, b] = TILE_COLORS[t.tiles[i]] || [0,0,0];
+    d[i*4]=r; d[i*4+1]=g; d[i*4+2]=b; d[i*4+3]=255;
+  }
+  tctx.putImageData(img, 0, 0);
+  return tc;
+}
+
+// ── World ↔ canvas ─────────────────────────────────────────────────────────
+function worldToCanvas(wx, wy) {
+  const W  = state ? state.width  : 80;
+  const H  = state ? state.height : 40;
+  const s  = Math.min(canvas.width/W, canvas.height/H) * cam.scale;
+  const ox = (canvas.width  - W*s)/2;
+  const oy = (canvas.height - H*s)/2;
+  return { x: ox+cam.x+wx*s, y: oy+cam.y+wy*s, s };
+}
+function canvasToWorld(cx, cy) {
+  const W  = state ? state.width  : 80;
+  const H  = state ? state.height : 40;
+  const s  = Math.min(canvas.width/W, canvas.height/H) * cam.scale;
+  const ox = (canvas.width  - W*s)/2;
+  const oy = (canvas.height - H*s)/2;
+  return { x:(cx-ox-cam.x)/s, y:(cy-oy-cam.y)/s };
+}
+
+// ── Creature visuals ───────────────────────────────────────────────────────
+function creatureColor(c, alpha=1) {
+  const hue = (1-c.diet)*120;
+  let sat = 55 + c.aggression*45;
+  let lit = Math.min(65, 26 + (c.energy/280)*44);
+  if (c.hydration !== undefined) {
+    const hydFract = c.hydration / 100.0;
+    sat = sat * (0.3 + 0.7 * hydFract);
+    lit = lit + (100 - lit) * 0.4 * (1.0 - hydFract);
+  }
+  return `hsla(${hue|0},${sat|0}%,${lit|0}%,${alpha})`;
+}
+function glowColor(c) {
+  const t = c.temp_optimum;
+  if (t < 0.32) return [80,160,255,0.4];
+  if (t > 0.68) return [255,140,40,0.38];
+  return null;
+}
+
+// ── Environment (Season & Weather) visuals ─────────────────────────────────
+function updateEnvironmentVisuals(season, weather) {
+  // Update season badge
+  const sBadge = document.getElementById('tb-season');
+  sBadge.textContent = season;
+  sBadge.className = 'season-badge season-' + (season||'').toLowerCase();
+
+  // Update weather badge
+  const wBadge = document.getElementById('tb-weather');
+  wBadge.textContent = weather || 'Clear';
+  
+  // Style weather badge depending on status
+  if (weather === 'Cold Snap') {
+    wBadge.style.color = '#60a8f0';
+    wBadge.style.borderColor = '#60a8f055';
+    wBadge.style.background = '#0c1928';
+  } else if (weather === 'Heatwave') {
+    wBadge.style.color = '#f0a03a';
+    wBadge.style.borderColor = '#f0a03a55';
+    wBadge.style.background = '#25170d';
+  } else if (weather === 'Toxic Storm') {
+    wBadge.style.color = '#8cf03a';
+    wBadge.style.borderColor = '#8cf03a55';
+    wBadge.style.background = '#14220b';
+  } else if (weather === 'Tsunami') {
+    wBadge.style.color = '#3ae2f0';
+    wBadge.style.borderColor = '#3ae2f055';
+    wBadge.style.background = '#092225';
+  } else {
+    // Clear
+    wBadge.style.color = '#3af0c8';
+    wBadge.style.borderColor = '#3af0c855';
+    wBadge.style.background = '#0d1b1c';
+  }
+
+  // Set Vignette background
+  let color = 'transparent';
+  let opacity = '0.5';
+
+  if (weather === 'Cold Snap') {
+    color = 'rgba(0, 100, 255, 0.28)';
+    opacity = '1';
+  } else if (weather === 'Heatwave') {
+    color = 'rgba(255, 60, 0, 0.22)';
+    opacity = '1';
+  } else if (weather === 'Toxic Storm') {
+    color = 'rgba(100, 255, 0, 0.18)';
+    opacity = '1';
+  } else if (weather === 'Tsunami') {
+    color = 'rgba(0, 60, 120, 0.32)';
+    opacity = '1';
+  } else {
+    // Fallback to seasonal vignettes
+    const map = { Summer:'rgba(40,10,0,0.18)', Winter:'rgba(0,20,60,0.25)', Spring:'transparent', Autumn:'rgba(30,8,0,0.12)' };
+    color = map[season] || 'transparent';
+    opacity = (season === 'Winter' || season === 'Summer') ? '1' : '0.5';
+  }
+
+  vignette.style.background = `radial-gradient(ellipse at center, transparent 55%, ${color} 100%)`;
+  vignette.style.opacity = opacity;
+}
+
+// ── Main renderer ──────────────────────────────────────────────────────────
+function render(now) {
+  if (!state) {
+    ctx.fillStyle='#070b12'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#4a6080'; ctx.font='16px Outfit'; ctx.textAlign='center';
+    ctx.fillText('Connecting to simulation…', canvas.width/2, canvas.height/2);
+    return;
+  }
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  const { x:tx, y:ty, s } = worldToCanvas(0,0);
+  const ww = state.width*s, wh = state.height*s;
+
+  // Terrain
+  if (offscreenTerrain) {
+    ctx.drawImage(offscreenTerrain, tx, ty, ww, wh);
+  } else {
+    ctx.fillStyle='#1f3d14'; ctx.fillRect(tx,ty,ww,wh);
+  }
+
+  // Aquatic plants (deep = darker blue-green, shallow = teal)
+  if (s > 1.5 && state.aquatic && state.aquatic.length) {
+    for (const ap of state.aquatic) {
+      const {x,y} = worldToCanvas(ap.x, ap.y);
+      const r = Math.max(1, s * 0.22) * (0.4 + ap.e/80);
+      ctx.beginPath();
+      ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.fillStyle = ap.deep
+        ? `rgba(30,100,180,${0.4+ap.e/120})`
+        : `rgba(40,170,200,${0.45+ap.e/120})`;
+      ctx.fill();
+    }
+  }
+
+  // Fruits
+  if (s > 1.5 && state.fruits) {
+    for (const f of state.fruits) {
+      const {x,y} = worldToCanvas(f.x, f.y);
+      const r = Math.max(1.2, s*0.16);
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.fillStyle = f.p > 0.3 ? 'rgba(190,255,60,0.78)' : 'rgba(240,200,40,0.82)';
+      ctx.fill();
+    }
+  }
+
+  // Carcasses
+  if (s > 1.5 && state.carcasses) {
+    for (const c of state.carcasses) {
+      const {x,y} = worldToCanvas(c.x, c.y);
+      const r = Math.max(1.5, s*0.22) * Math.min(1, c.e/50);
+      ctx.save();
+      ctx.strokeStyle='rgba(140,70,50,0.8)'; ctx.lineWidth=Math.max(1,r*0.5);
+      ctx.beginPath(); ctx.moveTo(x-r,y-r); ctx.lineTo(x+r,y+r); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x+r,y-r); ctx.lineTo(x-r,y+r); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // Mushrooms (glowing violet circles)
+  if (s > 1.5 && state.mushrooms) {
+    for (const m of state.mushrooms) {
+      const {x,y} = worldToCanvas(m.x, m.y);
+      const r = Math.max(1.2, s*0.22) * (0.3 + m.e / 60);
+      
+      const grad = ctx.createRadialGradient(x, y, r * 0.1, x, y, r);
+      grad.addColorStop(0, 'rgba(225, 170, 255, 0.9)');
+      grad.addColorStop(0.5, 'rgba(165, 65, 230, 0.75)');
+      grad.addColorStop(1, 'rgba(100, 30, 150, 0)');
+      
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+  }
+
+  // Trees
+  if (state.trees) {
+    for (const t of state.trees) {
+      const {x,y} = worldToCanvas(t.x, t.y);
+      const sz = Math.max(3, s*0.65*(0.7+t.fertility*0.5));
+      const alpha = 0.75 + t.seed_dispersal * 0.08;
+      let fillCol, strokeCol;
+      if (t.is_fruit === false) {
+        const shade = Math.round(100 - t.poison * 40);
+        fillCol = `rgba(${shade + 20}, ${shade}, ${shade - 10}, ${alpha})`;
+        strokeCol = `rgba(${shade + 40}, ${shade + 20}, ${shade + 10}, 0.45)`;
+      } else {
+        const toxR = Math.round(55+t.poison*170);
+        const toxG = Math.round(110-t.poison*85);
+        fillCol   = `rgba(${toxR},${toxG},36,${alpha})`;
+        strokeCol = `rgba(${toxR+35},${toxG+35},55,0.45)`;
+      }
+      ctx.fillStyle   = fillCol;
+      ctx.strokeStyle = strokeCol;
+      ctx.lineWidth   = 1;
+      ctx.beginPath(); ctx.rect(x-sz/2,y-sz/2,sz,sz); ctx.fill();
+      if (s>2.5) ctx.stroke();
+    }
+  }
+
+  // Social arcs (kin clusters)
+  if (s > 3 && state.creatures && state.creatures.length < 600) {
+    ctx.save();
+    ctx.setLineDash([2,4]);
+    for (let i = 0; i < state.creatures.length; i++) {
+      const a = state.creatures[i];
+      const {x:ax,y:ay} = worldToCanvas(a.x, a.y);
+      for (let j = i+1; j < state.creatures.length; j++) {
+        const b = state.creatures[j];
+        const dx=a.x-b.x, dy=a.y-b.y;
+        if (dx*dx+dy*dy > 64) continue; // world units ≤ 8
+        const sv=a.social, sv2=b.social;
+        let dot=0,ma=0,mb=0;
+        for(let d=0;d<8;d++){dot+=sv[d]*sv2[d];ma+=sv[d]*sv[d];mb+=sv2[d]*sv2[d];}
+        const sim=ma>0&&mb>0?dot/(Math.sqrt(ma)*Math.sqrt(mb)):0;
+        if(sim<0.80) continue;
+        const {x:bx,y:by}=worldToCanvas(b.x,b.y);
+        ctx.globalAlpha=(sim-0.80)*4*0.45;
+        ctx.strokeStyle=creatureColor(a);
+        ctx.lineWidth=0.6;
+        ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha=1; ctx.setLineDash([]); ctx.restore();
+  }
+
+  // ── Twigs and Nests ────────────────────────────────────────────────────
+  if (state.twigs) {
+    for (const t of state.twigs) {
+      const {x, y} = worldToCanvas(t.x, t.y);
+      const len = Math.max(2, s * 0.4);
+      ctx.strokeStyle = '#a67c52';
+      ctx.lineWidth = Math.max(1.2, s * 0.08);
+      ctx.beginPath();
+      ctx.moveTo(x - len/2, y);
+      ctx.lineTo(x + len/2, y + len/3);
+      ctx.stroke();
+    }
+  }
+
+  if (state.nests) {
+    for (const n of state.nests) {
+      const {x, y} = worldToCanvas(n.x, n.y);
+      const r = Math.max(3, s * 0.7);
+      ctx.save();
+      ctx.strokeStyle = '#8b5a2b';
+      ctx.lineWidth = Math.max(1.2, s * 0.1);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      if (n.done) {
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.5, 0, Math.PI * 2 * (n.twigs / 5.0));
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  // ── Creatures (with smooth interpolation) ──────────────────────────────
+  if (state.creatures) {
+    for (const c of state.creatures) {
+      // Lerp toward new position for smooth movement
+      const prev = prevCreatures.get(c.id);
+      const wx = prev ? prev.x + (c.x-prev.x)*interp : c.x;
+      const wy = prev ? prev.y + (c.y-prev.y)*interp : c.y;
+      const {x,y} = worldToCanvas(wx, wy);
+
+      const baseR = Math.max(2, s*0.36*(0.5+c.size*0.5));
+      const isH   = c.id===hoveredId, isL = c.id===lockedId;
+
+      // Temperature glow
+      const gc = glowColor(c);
+      if (gc && s > 2.5) {
+        const [gr,gg,gb,ga] = gc;
+        const grad = ctx.createRadialGradient(x,y,baseR,x,y,baseR*3);
+        grad.addColorStop(0,`rgba(${gr},${gg},${gb},${ga})`);
+        grad.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.beginPath(); ctx.arc(x,y,baseR*3,0,Math.PI*2);
+        ctx.fillStyle=grad; ctx.fill();
+      }
+
+      // Energy pulse for well-fed creatures
+      if (c.energy > 160 && s > 3) {
+        const p = (Math.sin(Date.now()/280+c.id)*0.5+0.5);
+        ctx.beginPath(); ctx.arc(x,y,baseR+1.5+p*3,0,Math.PI*2);
+        ctx.strokeStyle=`rgba(255,255,180,${0.12+p*0.12})`; ctx.lineWidth=1; ctx.stroke();
+      }
+
+      // Sickness light green glow
+      if (c.sickness && c.sickness > 0 && s > 2.5) {
+        const grad = ctx.createRadialGradient(x,y,baseR,x,y,baseR + 4.0 * c.sickness);
+        grad.addColorStop(0, `rgba(140, 240, 58, ${0.5 * c.sickness})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath(); ctx.arc(x,y,baseR + 4.0 * c.sickness,0,Math.PI*2);
+        ctx.fillStyle=grad; ctx.fill();
+      }
+
+      // Vocal signal wave rings
+      if (c.vocal && c.vocal > 0) {
+        const pulse = (Date.now() % 800) / 800.0;
+        const waveR = baseR + pulse * 18 * s * 0.6;
+        const alpha = 1.0 - pulse;
+        let waveColor;
+        if (c.vocal === 1) {
+          waveColor = `rgba(255, 50, 50, ${alpha * 0.8})`; // Red alarm
+        } else if (c.vocal === 2) {
+          waveColor = `rgba(50, 255, 50, ${alpha * 0.8})`; // Green food
+        } else if (c.vocal === 3) {
+          waveColor = `rgba(180, 50, 255, ${alpha * 0.8})`; // Violet mating
+        }
+        if (waveColor) {
+          ctx.save();
+          ctx.strokeStyle = waveColor;
+          ctx.lineWidth = Math.max(1.5, s * 0.15);
+          ctx.beginPath();
+          ctx.arc(x, y, waveR, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // Main body
+      ctx.beginPath(); ctx.arc(x,y,baseR,0,Math.PI*2);
+      ctx.fillStyle=creatureColor(c); ctx.fill();
+
+      // Vampire fangs
+      if (c.blood_sucking && c.blood_sucking > 0 && s > 3) {
+        ctx.fillStyle = `rgba(255, 30, 30, ${0.6 + 0.4 * c.blood_sucking})`;
+        // Left fang
+        ctx.beginPath();
+        ctx.moveTo(x - baseR * 0.4, y + baseR * 0.1);
+        ctx.lineTo(x - baseR * 0.1, y + baseR * 0.1);
+        ctx.lineTo(x - baseR * 0.25, y + baseR * 0.7);
+        ctx.closePath();
+        ctx.fill();
+
+        // Right fang
+        ctx.beginPath();
+        ctx.moveTo(x + baseR * 0.1, y + baseR * 0.1);
+        ctx.lineTo(x + baseR * 0.4, y + baseR * 0.1);
+        ctx.lineTo(x + baseR * 0.25, y + baseR * 0.7);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Parasite dashed circle
+      if (c.parasites && c.parasites > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([2, 2]);
+        ctx.arc(x, y, baseR + 3.0, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(200, 100, 50, ${0.5 + 0.5 * c.parasites})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Lethality outline
+      if (c.lethality > 0.25 && s > 2) {
+        ctx.strokeStyle=`rgba(255,${Math.round(80-c.lethality*60)},50,0.72)`;
+        ctx.lineWidth=0.4+c.lethality*2.2; ctx.stroke();
+      }
+
+      // Mating-preference inner arc
+      if (s > 4.5 && baseR > 3.5) {
+        ctx.beginPath();
+        ctx.arc(x,y,baseR*0.45,-Math.PI/2,-Math.PI/2+Math.PI*2*c.mating_pref);
+        ctx.strokeStyle='rgba(255,255,255,0.45)'; ctx.lineWidth=1; ctx.stroke();
+      }
+
+      // Swim indicator (tiny blue ring for aquatic specialists)
+      if (c.swim > 0.55 && s > 4) {
+        ctx.beginPath();
+        ctx.arc(x,y,baseR+2.5,0,Math.PI*2*c.swim);
+        ctx.strokeStyle=`rgba(58,176,240,${c.swim*0.7})`; ctx.lineWidth=1; ctx.stroke();
+      }
+
+      // Tribal ring (pulsing cyan/white ring)
+      if (c.in_tribe) {
+        const pulse = Math.sin(Date.now() / 180 + c.id) * 0.5 + 0.5;
+        ctx.beginPath();
+        ctx.arc(x, y, baseR + 1.8 + pulse * 1.5, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${Math.round(180 + pulse * 75)}, 255, 255, ${0.4 + pulse * 0.45})`;
+        ctx.lineWidth = 1.0 + pulse * 1.0;
+        ctx.stroke();
+      }
+
+      // Hover / lock ring
+      if (isH||isL) {
+        ctx.beginPath(); ctx.arc(x,y,baseR+3,0,Math.PI*2);
+        ctx.strokeStyle=isL?'rgba(58,240,200,.95)':'rgba(255,255,255,.6)';
+        ctx.lineWidth=isL?2:1; ctx.stroke();
+      }
+
+      // Carrying twigs
+      if (c.carrying_twig) {
+        ctx.save();
+        ctx.strokeStyle = '#a67c52';
+        ctx.lineWidth = Math.max(1.5, s * 0.12);
+        ctx.beginPath();
+        ctx.moveTo(x - baseR * 0.5, y + baseR * 0.5);
+        ctx.lineTo(x + baseR * 0.7, y + baseR * 0.2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  updateTooltip();
+  drawPopGraph();
+}
+
+// ── Population graph ─────────────────────────────────────────────────────
+function drawPopGraph() {
+  const pc = document.getElementById('pop-canvas');
+  const w=pc.clientWidth, h=pc.clientHeight;
+  pc.width=w; pc.height=h;
+  if (!state||!state.history||state.history.length<2) return;
+  const pctx=pc.getContext('2d');
+  pctx.clearRect(0,0,w,h);
+  const hist=state.history, n=hist.length;
+  const peak=Math.max(1,...hist.map(r=>r.h+r.o+r.c));
+  const toY=v=>h-3-(v/peak)*(h-6);
+  const toX=i=>(i/(n-1))*w;
+  // Grid
+  pctx.strokeStyle='rgba(255,255,255,0.04)'; pctx.lineWidth=1;
+  for(let i=0;i<=3;i++){
+    pctx.beginPath(); pctx.moveTo(0,toY(peak*i/3)); pctx.lineTo(w,toY(peak*i/3)); pctx.stroke();
+  }
+  const line=(key,color)=>{
+    pctx.beginPath();
+    hist.forEach((r,i)=>{ const x=toX(i),y=toY(r[key]); i===0?pctx.moveTo(x,y):pctx.lineTo(x,y); });
+    pctx.strokeStyle=color; pctx.lineWidth=1.6; pctx.stroke();
+  };
+  line('h','#3dcc6e'); line('o','#f0c43a'); line('c','#f04a3a');
+}
+
+// ── Gene bars ─────────────────────────────────────────────────────────────
+const GENES = [
+  { key:'avg_diet',          label:'diet',       min:0, max:1,   color:'#f04a3a' },
+  { key:'avg_lethality',     label:'lethality',  min:0, max:1,   color:'#f07a3a' },
+  { key:'avg_poison_resist', label:'tox.resist', min:0, max:1,   color:'#c0f040' },
+  { key:'avg_temp_opt',      label:'temp.opt',   min:0, max:1,   color:'#40b0f0' },
+  { key:'avg_swim',          label:'swim',       min:0, max:1,   color:'#3ab0f0' },
+  { key:'avg_climb',         label:'climb',      min:0, max:1,   color:'#a080f0' },
+];
+const TREE_GENES = [
+  { key:'avg_tree_poison',   label:'tree.tox',   min:0, max:1,   color:'#c8f040' },
+  { key:'avg_drought_res',   label:'drought.res',min:0, max:1,   color:'#f0b040' },
+  { key:'avg_seed_disp',     label:'seed.disp',  min:0, max:3,   color:'#60d080' },
+];
+
+function buildBars(genes, containerId) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  for (const g of genes) {
+    const row = document.createElement('div');
+    row.className = 'gene-row';
+    row.innerHTML = `<span class="g-label">${g.label}</span>
+      <div class="g-track"><div class="g-fill" id="gb-${g.key}" style="background:${g.color}"></div></div>
+      <span class="g-val" id="gv-${g.key}">—</span>`;
+    el.appendChild(row);
+  }
+}
+buildBars(GENES, 'gene-bars');
+buildBars(TREE_GENES, 'tree-bars');
+
+function updateBars(genes) {
+  if (!state||!state.stats) return;
+  const st=state.stats;
+  for(const g of genes){
+    const raw=st[g.key]??0;
+    const pct=((raw-g.min)/(g.max-g.min)*100);
+    const el=document.getElementById(`gb-${g.key}`);
+    const vl=document.getElementById(`gv-${g.key}`);
+    if(el) el.style.width=Math.min(100,Math.max(0,pct))+'%';
+    if(vl) vl.textContent=raw.toFixed(2);
+  }
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+function updateTooltip() {
+  const id = lockedId??hoveredId;
+  if(!id||!state){ tooltip.style.display='none'; return; }
+  const c = state.creatures&&state.creatures.find(x=>x.id===id);
+  if(!c){ tooltip.style.display='none'; return; }
+  const diet = c.diet<0.33?'Herbivore':c.diet<0.67?'Omnivore':'Carnivore';
+
+  // Calculate underfoot description
+  const tileNames = ['Deep Water', 'Shallow Water', 'Sand', 'Plains', 'Mountain'];
+  const underfootName = tileNames[c.tile_type] !== undefined ? tileNames[c.tile_type] : 'Unknown';
+  let underfootVal = underfootName;
+  if (c.tile_type === 2) {
+    underfootVal = `Desert Cactus (${c.tile_energy.toFixed(1)})`;
+  } else if (c.tile_type === 3) {
+    if (c.fungi_energy > 0.0) {
+      underfootVal = `Plains Grass (${c.tile_energy.toFixed(1)}), Mushroom (${c.fungi_energy.toFixed(1)})`;
+    } else {
+      underfootVal = `Plains Grass (${c.tile_energy.toFixed(1)})`;
+    }
+  } else if (c.tile_type === 4) {
+    underfootVal = `Tundra Lichen (${c.tile_energy.toFixed(1)})`;
+  } else if (c.tile_type === 1) {
+    underfootVal = `Shallow Water`;
+  } else if (c.tile_type === 0) {
+    underfootVal = `Deep Water`;
+  }
+
+  const rows = [
+    ['Energy',       c.energy.toFixed(1)],
+    ['Diet',         c.diet.toFixed(3)+' ('+diet+')'],
+    ['Size',         c.size.toFixed(3)],
+    ['Speed',        c.speed.toFixed(3)],
+    ['Aggression',   c.aggression.toFixed(3)],
+    ['Lethality',    c.lethality.toFixed(3)],
+    ['Feed eff.',    c.feed_efficiency.toFixed(3)],
+    ['Mating pref',  c.mating_pref.toFixed(3)],
+    ['Temp opt.',    c.temp_optimum.toFixed(3)],
+    ['Tox. resist',  c.poison_resist.toFixed(3)],
+    ['Swim',         c.swim.toFixed(3)],
+    ['Climb',        c.climb.toFixed(3)],
+    ['Cycles',       c.cycles],
+    ['Gut plant fit', (c.plant_fit !== undefined ? c.plant_fit : 0.5).toFixed(3)],
+    ['Gut meat fit',  (c.meat_fit !== undefined ? c.meat_fit : 0.5).toFixed(3)],
+    ['Gut mood agg',  (c.mood_aggression !== undefined ? c.mood_aggression : 0.0).toFixed(3)],
+    ['Underfoot',    underfootVal],
+    ['Tribe',        c.in_tribe ? 'Yes (+30% combat, +0.40 altruism)' : 'No'],
+    ['Claws',        (c.claws !== undefined ? c.claws : 0.0).toFixed(3)],
+    ['Spikes',       (c.spikes !== undefined ? c.spikes : 0.0).toFixed(3)],
+    ['Repro complex', (c.repro_complex !== undefined ? c.repro_complex : 0.0).toFixed(3)],
+    ['Social cap',   (c.social_cap !== undefined ? c.social_cap : 0.0).toFixed(3)],
+    ['Sickness',      (c.sickness !== undefined ? c.sickness : 0.0).toFixed(3)],
+    ['Parasites',     (c.parasites !== undefined ? c.parasites : 0.0).toFixed(3)],
+    ['Hydration',     (c.hydration !== undefined ? c.hydration : 100.0).toFixed(1)],
+    ['Immunity',      (c.immunity !== undefined ? c.immunity : 0.0).toFixed(3)],
+    ['Blood sucking', (c.blood_sucking !== undefined ? c.blood_sucking : 0.0).toFixed(3)],
+    ['Nest',          (state.nests && state.nests.find(n=>n.owner===c.id)) ? ((state.nests.find(n=>n.owner===c.id).done ? 'Completed' : 'Building ('+state.nests.find(n=>n.owner===c.id).twigs+'/5 twigs)')) : 'None'],
+    ['Carrying Twig', c.carrying_twig ? 'Yes' : 'No'],
+    ['Inbred',        c.is_inbred ? 'Yes (15% speed/immunity penalty)' : 'No'],
+  ];
+  tooltip.innerHTML = `
+    <div class="tt-header" style="color:${creatureColor(c)}">
+      ${diet} #${c.id}
+    </div>
+    ${rows.map(([l,v])=>`<div class="tt-row"><span class="tt-label">${l}</span><span class="tt-val">${v}</span></div>`).join('')}
+    <div class="tt-divider"></div>
+    <div style="font-size:9px;color:var(--muted);">social: [${(c.social||[]).map(v=>v.toFixed(2)).join(', ')}]</div>
+  `;
+  let tx=mouseXY.x+16, ty=mouseXY.y+16;
+  if(tx+280>canvas.width)  tx=mouseXY.x-290;
+  if(ty+460>canvas.height) ty=mouseXY.y-470;
+  tooltip.style.left=tx+'px'; tooltip.style.top=ty+'px';
+  tooltip.style.display='block';
+}
+
+// ── Sidebar stats ─────────────────────────────────────────────────────────
+function updateSidebar() {
+  if(!state) return;
+  const st=state.stats;
+  document.getElementById('hoc-h').textContent=st.h;
+  document.getElementById('hoc-o').textContent=st.o;
+  document.getElementById('hoc-c').textContent=st.c;
+  document.getElementById('inf-fruits').textContent=st.fruits;
+  document.getElementById('inf-carc').textContent=st.carcasses;
+  document.getElementById('inf-aqua').textContent=st.aquatic;
+  document.getElementById('inf-fert').textContent=state.fertilizer_patches??'—';
+  document.getElementById('tb-cycle').textContent=state.cycle;
+  document.getElementById('tb-tick').textContent=state.tick;
+  document.getElementById('tb-pop').textContent=st.pop;
+  document.getElementById('tb-trees').textContent=st.trees;
+  document.getElementById('tb-aqua').textContent=st.aquatic;
+  document.getElementById('tb-energy').textContent=st.avg_energy.toFixed(1);
+  updateEnvironmentVisuals(state.season, state.weather);
+  updateBars([...GENES,...TREE_GENES]);
+}
+
+// ── Hit-test ─────────────────────────────────────────────────────────────
+function hitTest(cx,cy) {
+  if(!state||!state.creatures) return null;
+  const w=canvasToWorld(cx,cy);
+  let best=null, bd=Infinity;
+  for(const c of state.creatures){
+    const dx=c.x-w.x, dy=c.y-w.y, d=Math.hypot(dx,dy);
+    const r=0.4+c.size*0.4;
+    if(d<r&&d<bd){ bd=d; best=c.id; }
+  }
+  return best;
+}
+
+// ── Fetch state ───────────────────────────────────────────────────────────
+async function fetchTerrain(){
+  try{
+    terrain=await(await fetch('/terrain')).json();
+    offscreenTerrain=buildTerrainCanvas(terrain);
+  }catch(e){}
+}
+
+async function fetchState(){
+  try{
+    const newState=await(await fetch('/state')).json();
+    // Build prev-position map for interpolation.
+    if(state&&state.creatures){
+      prevCreatures=new Map(state.creatures.map(c=>[c.id,{x:c.x,y:c.y}]));
+    }
+    interp=0; // start interpolating toward new positions
+    state=newState;
+    updateSidebar();
+  }catch(e){}
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────
+canvas.addEventListener('mousemove',e=>{
+  const r=canvas.getBoundingClientRect();
+  mouseXY.x=e.clientX-r.left; mouseXY.y=e.clientY-r.top;
+  if(drag.on){ cam.x=drag.cx+(mouseXY.x-drag.sx); cam.y=drag.cy+(mouseXY.y-drag.sy); return; }
+  hoveredId=hitTest(mouseXY.x,mouseXY.y);
+  canvas.style.cursor=hoveredId?'pointer':'crosshair';
+});
+canvas.addEventListener('mousedown',e=>{
+  drag.on=true;
+  drag.sx=e.clientX-canvas.getBoundingClientRect().left;
+  drag.sy=e.clientY-canvas.getBoundingClientRect().top;
+  drag.cx=cam.x; drag.cy=cam.y;
+});
+canvas.addEventListener('mouseup',()=>drag.on=false);
+canvas.addEventListener('mouseleave',()=>{ drag.on=false; hoveredId=null; tooltip.style.display='none'; });
+canvas.addEventListener('click',()=>{
+  const hit=hitTest(mouseXY.x,mouseXY.y);
+  lockedId=(hit===lockedId)?null:hit;
+});
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const f=e.deltaY>0?0.86:1.16;
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  cam.x=mx+(cam.x-mx)*f; cam.y=my+(cam.y-my)*f;
+  cam.scale=Math.min(22,Math.max(0.25,cam.scale*f));
+},{passive:false});
+
+// ── Animation loop ────────────────────────────────────────────────────────
+let lastTime=0;
+function loop(now){
+  const dt=now-lastTime; lastTime=now;
+  // Advance interpolation based on elapsed time
+  interp=Math.min(1, interp+(dt/FETCH_INTERVAL)*0.9);
+
+  if(now-lastFetch>FETCH_INTERVAL){ lastFetch=now; fetchState(); }
+  render(now);
+  requestAnimationFrame(loop);
+}
+
+document.getElementById('btn-restart').addEventListener('click', async () => {
+  const input = prompt("Enter a seed (1 - 1000000) or leave empty for a random seed:", "");
+  if (input === null) return; // user cancelled
+  let url = '/restart';
+  if (input.trim() !== '') {
+    const seed = parseInt(input.trim(), 10);
+    if (isNaN(seed) || seed < 1) {
+      alert("Invalid seed. Please enter a positive integer.");
+      return;
+    }
+    url += '?seed=' + seed;
+  }
+  try {
+    const btn = document.getElementById('btn-restart');
+    btn.textContent = "Restarting...";
+    btn.disabled = true;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status === 'ok') {
+      state = null;
+      prevCreatures.clear();
+      await fetchTerrain();
+      await fetchState();
+    }
+    btn.textContent = "Restart";
+    btn.disabled = false;
+  } catch (e) {
+    alert("Failed to restart: " + e);
+    const btn = document.getElementById('btn-restart');
+    btn.textContent = "Restart";
+    btn.disabled = false;
+  }
+});
+
+(async()=>{
+  await fetchTerrain();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
